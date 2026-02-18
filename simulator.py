@@ -5,18 +5,25 @@ import random
 import threading
 import sys
 import os
+import argparse
 
 BROKER = os.getenv("BROKER_HOST", "127.0.0.1")
 PORT = 1883
 DATA_TOPIC = "factory/line1/machine1/data"
 COMMAND_TOPIC = "factory/line1/machine1/command"
 
+# CLI Arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--mode", choices=["clean", "dirty", "dumb"], default="clean", help="Simulation mode")
+args = parser.parse_args()
+
 # Machine State
 state = {
     "production_count": 0,
     "temperature": 40.0,
     "state_code": 1, # 1: Run, 0: Stop, 2: Fault
-    "target_speed": 100, # products per minute, roughly
+    "target_speed": 100,
+    "current_amps": 0.0 # New sensor for inference
 }
 
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -74,16 +81,40 @@ try:
             # Random fluctuation around 40-50
             fluctuation = random.uniform(-0.5, 0.5)
             state["temperature"] = max(30, min(90, current_temp + fluctuation))
+            state["current_amps"] = random.uniform(10.0, 15.0) # Normal running amps
         elif state["state_code"] == 0:
             # Stopped - temp cools down
             state["temperature"] = max(20, current_temp - 0.1)
+            state["current_amps"] = random.uniform(0.0, 0.2) # Idle amps
 
+        # Base Payload
         payload = {
             "timestamp": time.time(),
             "production_count": state["production_count"],
             "temperature": round(state["temperature"], 2),
-            "state_code": state["state_code"]
+            "state_code": state["state_code"],
+            "current_amps": round(state["current_amps"], 2)
         }
+
+        # Modify based on Mode
+        if args.mode == "dumb":
+            # Missing state_code, missing production_count
+            # Only sends amps and maybe a generic "ch2_val" for count
+            payload.pop("state_code", None)
+            count = payload.pop("production_count", None)
+            payload["ch2_val"] = count # Alias test
+
+        elif args.mode == "dirty":
+            # Inject Noise
+            if random.random() < 0.1:
+                # Spike
+                payload["temperature"] = 500.0
+                print("SIMULATOR: Injected Temperature Spike (500.0)")
+
+            if random.random() < 0.1:
+                # Drop key
+                payload.pop("state_code", None)
+                print("SIMULATOR: Dropped state_code")
 
         client.publish(DATA_TOPIC, json.dumps(payload))
         # print(f"Published: {payload}")

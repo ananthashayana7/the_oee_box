@@ -26,6 +26,13 @@ class RLAgent:
 
                 oee_val = oee_data.get("oee", 0)
                 performance = oee_data.get("performance", 0)
+                trust_score = oee_data.get("trust", 1.0) # Assume high trust if not provided
+
+                # Safety Check
+                if trust_score < 0.8:
+                    if self.mode != "shadow": # Log only if we are supposed to be active but are blocked
+                         logger.warning(f"Optimization Blocked: Low Trust Score ({trust_score})")
+                    continue
 
                 # Simple Logic: If Performance < 90% and > 0 (Running), Optimize
                 if 0 < performance < 90:

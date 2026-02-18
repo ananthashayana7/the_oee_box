@@ -19,6 +19,7 @@ function App() {
   const ws = useRef(null)
 
   const handleLogin = (t) => {
+    console.log("App: Setting token", t);
     localStorage.setItem('token', t);
     setToken(t);
   };
@@ -30,6 +31,7 @@ function App() {
   };
 
   useEffect(() => {
+    console.log("App: Effect triggered. Token:", token);
     if (!token) return;
 
     // In production, use window.location.hostname
@@ -55,6 +57,8 @@ function App() {
             if (message.oee) setOee(message.oee)
             if (message.history) setHistory(message.history)
             if (message.alerts) setAlerts(message.alerts)
+            if (message.trust !== undefined) setTrust(message.trust)
+            if (message.virtual_keys) setVirtualKeys(message.virtual_keys)
         } else if (message.type === 'update') {
             if (message.schema) setSchema(message.schema)
             if (message.data) {
@@ -67,6 +71,8 @@ function App() {
             }
             if (message.oee) setOee(message.oee)
             if (message.alerts) setAlerts(message.alerts)
+            if (message.trust !== undefined) setTrust(message.trust)
+            if (message.virtual_keys) setVirtualKeys(message.virtual_keys)
         }
       } catch (e) {
         console.error("Error parsing WS message", e)
@@ -92,6 +98,12 @@ function App() {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <Typography variant="h4" component="h1">Universal OEE Interface</Typography>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ textAlign: 'right', marginRight: '10px' }}>
+                <Typography variant="caption" display="block">Trust Score</Typography>
+                <Typography variant="body1" sx={{ color: trust < 0.8 ? 'red' : 'green', fontWeight: 'bold' }}>
+                    {Math.round(trust * 100)}%
+                </Typography>
+            </div>
             <Button variant="outlined" color="inherit" onClick={handleLogout}>Logout</Button>
             <div style={{
             padding: '5px 10px',
@@ -148,11 +160,14 @@ function App() {
         <Grid item xs={12}>
             <Typography variant="h6" gutterBottom>Live Telemetry (Auto-Discovered)</Typography>
             <Grid container spacing={2}>
-                {Object.entries(schema).map(([key, type]) => (
-                    <Grid item xs={12} sm={6} md={3} key={key}>
-                        <DynamicWidget name={key} value={data[key]} type={type} />
-                    </Grid>
-                ))}
+                {Object.entries(schema).map(([key, type]) => {
+                    const isVirtual = virtualKeys ? virtualKeys.some(k => k.includes(key)) : false;
+                    return (
+                        <Grid item xs={12} sm={6} md={3} key={key}>
+                            <DynamicWidget name={key} value={data[key]} type={type} isVirtual={isVirtual} />
+                        </Grid>
+                    )
+                })}
             </Grid>
         </Grid>
 

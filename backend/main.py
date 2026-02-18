@@ -14,6 +14,8 @@ from backend.command_gatekeeper import CommandGatekeeper
 from backend.copilot import ChatAgent
 from backend.database import db_manager
 from backend.alert_engine import alert_engine
+from backend.sanitizer import sanitizer
+from backend.virtual_sensors import virtual_factory
 from backend.auth import authenticate_user, create_access_token, get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from backend.models import Token, User
 from fastapi import HTTPException, Depends, status
@@ -56,35 +58,51 @@ async def handle_mqtt_message(topic, payload):
         if "data" not in topic:
             return
 
-        data = json.loads(payload)
-        current_data = data
+        raw_data = json.loads(payload)
 
-        # Persist to DB
+        # Sanitization (The Bouncer)
+        data, trust_scores = sanitizer.process(raw_data)
+        current_data = data
+        current_trust = trust_scores
+
+        # Persist to DB (Sanitized)
         timestamp = data.get("timestamp", 0)
         for k, v in data.items():
             if k != "timestamp":
+                # We could store trust score in metadata if needed
                 await db_manager.insert_telemetry(timestamp, k, v)
 
-        # Alerts
+        # Alerts (Use raw or sanitized? Usually raw triggers faults, but sanitized prevents false alarms. Let's use sanitized for safety.)
         await alert_engine.process(data)
         alerts = await db_manager.get_active_alerts()
 
-        # Process Schema
-        schema_engine.process(data)
+        # Virtual Sensors (The Adapter)
+        v_data, v_trust, v_keys = virtual_factory.process(data, trust_scores)
+
+        # Process Schema (Use Virtual Data for richness)
+        schema_engine.process(v_data)
         schema = schema_engine.get_schema()
 
-        # Calculate OEE (This is stateful)
-        oee_result = oee_calculator.update(schema, data)
+        # Calculate OEE (Use Virtual Data)
+        oee_result = oee_calculator.update(schema, v_data)
         if oee_result:
             latest_oee = oee_result
+
+        # Calculate Global Trust Score (Average of all sensors)
+        global_trust = sum(v_trust.values()) / len(v_trust) if v_trust else 1.0
+
+        # Inject Trust into OEE for Agent
+        latest_oee["trust"] = global_trust
 
         # Broadcast
         msg = {
             "type": "update",
-            "data": current_data,
+            "data": v_data, # Use enhanced data for UI
             "schema": schema,
             "oee": latest_oee,
-            "alerts": alerts
+            "alerts": alerts,
+            "trust": round(global_trust, 2),
+            "virtual_keys": v_keys
         }
         await broadcast(msg)
     except json.JSONDecodeError:

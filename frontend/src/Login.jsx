@@ -16,9 +16,12 @@ const Login = ({ setToken }) => {
     try {
       const hostname = window.location.hostname || 'localhost';
       const protocol = window.location.protocol;
+      console.log("Login: Sending request to", `${protocol}//${hostname}:8000/token`);
       const res = await axios.post(`${protocol}//${hostname}:8000/token`, formData);
+      console.log("Login: Success, token received", res.data.access_token);
       setToken(res.data.access_token);
     } catch (err) {
+      console.error("Login: Failed", err);
       setError('Login failed. Check credentials.');
     }
   };
