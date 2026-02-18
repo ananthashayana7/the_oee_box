@@ -87,7 +87,7 @@ try:
 
         client.publish(DATA_TOPIC, json.dumps(payload))
         # print(f"Published: {payload}")
-        time.sleep(1)
+        time.sleep(2) # Slow down to trigger low performance (50%)
 except KeyboardInterrupt:
     client.loop_stop()
     client.disconnect()

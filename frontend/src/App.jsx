@@ -4,16 +4,34 @@ import DynamicWidget from './components/DynamicWidget';
 import ControlPanel from './components/ControlPanel';
 import ChatWidget from './components/ChatWidget';
 import HistoryChart from './components/HistoryChart';
+import AuditLog from './components/AuditLog';
+import Login from './Login';
+import { Button } from '@mui/material';
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [data, setData] = useState({})
   const [history, setHistory] = useState([])
+  const [alerts, setAlerts] = useState([])
   const [schema, setSchema] = useState({})
   const [oee, setOee] = useState({})
   const [connected, setConnected] = useState(false)
   const ws = useRef(null)
 
+  const handleLogin = (t) => {
+    localStorage.setItem('token', t);
+    setToken(t);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setToken('');
+    if (ws.current) ws.current.close();
+  };
+
   useEffect(() => {
+    if (!token) return;
+
     // In production, use window.location.hostname
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     // Use hostname to allow access from other devices
@@ -36,6 +54,7 @@ function App() {
             if (message.data) setData(message.data)
             if (message.oee) setOee(message.oee)
             if (message.history) setHistory(message.history)
+            if (message.alerts) setAlerts(message.alerts)
         } else if (message.type === 'update') {
             if (message.schema) setSchema(message.schema)
             if (message.data) {
@@ -47,6 +66,7 @@ function App() {
                 })
             }
             if (message.oee) setOee(message.oee)
+            if (message.alerts) setAlerts(message.alerts)
         }
       } catch (e) {
         console.error("Error parsing WS message", e)
@@ -61,21 +81,34 @@ function App() {
     return () => {
       if (ws.current) ws.current.close()
     }
-  }, [])
+  }, [token])
+
+  if (!token) {
+    return <Login setToken={handleLogin} />;
+  }
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4, pb: 10 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <Typography variant="h4" component="h1">Universal OEE Interface</Typography>
-        <div style={{
-          padding: '5px 10px',
-          borderRadius: '4px',
-          backgroundColor: connected ? '#4caf50' : '#f44336',
-          color: 'white'
-        }}>
-          {connected ? 'Online' : 'Offline'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Button variant="outlined" color="inherit" onClick={handleLogout}>Logout</Button>
+            <div style={{
+            padding: '5px 10px',
+            borderRadius: '4px',
+            backgroundColor: connected ? '#4caf50' : '#f44336',
+            color: 'white'
+            }}>
+            {connected ? 'Online' : 'Offline'}
+            </div>
         </div>
       </header>
+
+      {alerts.map((alert) => (
+        <Alert key={alert.id} severity={alert.severity || "info"} sx={{ mb: 2 }}>
+          {new Date(alert.timestamp * 1000).toLocaleTimeString()}: {alert.message}
+        </Alert>
+      ))}
 
       <Grid container spacing={3}>
         {/* OEE Section */}
@@ -107,7 +140,7 @@ function App() {
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
             <Typography variant="h6" gutterBottom align="center">Mission Control</Typography>
-            <ControlPanel />
+            <ControlPanel token={token} />
           </Paper>
         </Grid>
 
@@ -143,6 +176,10 @@ function App() {
              <Alert severity="info" sx={{ mt: 2 }}>
                 Schema: {JSON.stringify(schema)}
              </Alert>
+        </Grid>
+
+        <Grid item xs={12}>
+            <AuditLog />
         </Grid>
       </Grid>
       <ChatWidget />

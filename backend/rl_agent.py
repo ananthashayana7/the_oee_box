@@ -1,18 +1,21 @@
 import asyncio
 import logging
+import asyncio
 from backend.mqtt_client import mqtt_service
+from backend.database import db_manager
 
 logger = logging.getLogger("rl_agent")
 
 class RLAgent:
-    def __init__(self, get_oee_callback):
+    def __init__(self, get_oee_callback, mode="shadow"):
         self.running = False
         self.get_oee = get_oee_callback
         self.target_topic = "factory/line1/machine1/command"
+        self.mode = mode
 
     async def start(self):
         self.running = True
-        logger.info("RL Agent Activated (Autonomous Mode)")
+        logger.info(f"RL Agent Activated (Mode: {self.mode})")
         try:
             while self.running:
                 await asyncio.sleep(10) # Check every 10 seconds
@@ -26,8 +29,17 @@ class RLAgent:
 
                 # Simple Logic: If Performance < 90% and > 0 (Running), Optimize
                 if 0 < performance < 90:
-                    logger.info(f"RL Agent detected low performance ({performance}%). Optimizing...")
-                    mqtt_service.publish(self.target_topic, {"command": "OPTIMIZE", "source": "RL_AGENT"})
+                    action = "OPTIMIZE"
+                    details = f"Low performance ({performance}%). Triggering optimization."
+
+                    if self.mode == "shadow":
+                        logger.info(f"[SHADOW] Would execute: {action} - {details}")
+                        await db_manager.log_audit("AI_SHADOW", "RL_AGENT", details)
+                    else:
+                        logger.info(f"Executing: {action}")
+                        mqtt_service.publish(self.target_topic, {"command": action, "source": "RL_AGENT"})
+                        await db_manager.log_audit("AI_ACTION", "RL_AGENT", details)
+
         except asyncio.CancelledError:
             logger.info("RL Agent stopped")
 
