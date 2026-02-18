@@ -1,0 +1,11 @@
+INFO:     Started server process [11915]
+INFO:     Waiting for application startup.
+INFO:main:Starting MQTT Service...
+INFO:main:Starting RL Agent...
+INFO:rl_agent:RL Agent Activated (Autonomous Mode)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:mqtt_client:Connected to MQTT Broker
+WARNING:gatekeeper:Command 'INVALID' denied: Not in allowlist
+WARNING:main:Rejected command: INVALID to factory/line1/machine1/command
+INFO:     127.0.0.1:43954 - "POST /command HTTP/1.1" 403 Forbidden

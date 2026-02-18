@@ -1,0 +1,13 @@
+INFO:     Started server process [8600]
+INFO:     Waiting for application startup.
+INFO:main:Starting MQTT Service...
+INFO:main:Starting RL Agent...
+INFO:rl_agent:RL Agent Activated (Autonomous Mode)
+INFO:     Application startup complete.
+ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8000): [errno 98] address already in use
+INFO:     Waiting for application shutdown.
+INFO:main:Stopping RL Agent...
+INFO:main:Stopping MQTT Service...
+INFO:mqtt_client:Connected to MQTT Broker
+INFO:     Application shutdown complete.
+INFO:rl_agent:RL Agent stopped

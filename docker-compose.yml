@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  broker:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - broker
+    environment:
+      - BROKER_HOST=broker
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  simulator:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "simulator.py"]
+    depends_on:
+      - broker
+    environment:
+      - BROKER_HOST=broker

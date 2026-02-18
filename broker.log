@@ -1,0 +1,5 @@
+WARNING:amqtt.contexts:sys_interval is deprecated, use 'plugins' to define configuration
+WARNING:amqtt.contexts:'auth' and 'topic-check' are deprecated, use 'plugins' to define configuration
+/app/broker.py:24: DeprecationWarning: Loading plugins from EntryPoints is deprecated and will be removed in a future version. Use `plugins` section of config instead.
+  broker = Broker(config)
+WARNING:amqtt.broker.plugins.auth_file:Configuration parameter 'password-file' not found
