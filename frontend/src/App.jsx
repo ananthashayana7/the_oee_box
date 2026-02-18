@@ -2,16 +2,23 @@ import { useState, useEffect, useRef } from 'react'
 import { Container, Grid, Typography, Paper, Alert, Box } from '@mui/material';
 import DynamicWidget from './components/DynamicWidget';
 import ControlPanel from './components/ControlPanel';
+import ChatWidget from './components/ChatWidget';
+import HistoryChart from './components/HistoryChart';
 
 function App() {
   const [data, setData] = useState({})
+  const [history, setHistory] = useState([])
   const [schema, setSchema] = useState({})
   const [oee, setOee] = useState({})
   const [connected, setConnected] = useState(false)
   const ws = useRef(null)
 
   useEffect(() => {
-    const wsUrl = "ws://localhost:8000/ws";
+    // In production, use window.location.hostname
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // Use hostname to allow access from other devices
+    const hostname = window.location.hostname || 'localhost';
+    const wsUrl = `${protocol}//${hostname}:8000/ws`;
 
     ws.current = new WebSocket(wsUrl)
 
@@ -23,9 +30,24 @@ function App() {
     ws.current.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data)
-        if (message.schema) setSchema(message.schema)
-        if (message.data) setData(message.data)
-        if (message.oee) setOee(message.oee)
+
+        if (message.type === 'init') {
+            if (message.schema) setSchema(message.schema)
+            if (message.data) setData(message.data)
+            if (message.oee) setOee(message.oee)
+            if (message.history) setHistory(message.history)
+        } else if (message.type === 'update') {
+            if (message.schema) setSchema(message.schema)
+            if (message.data) {
+                setData(message.data)
+                setHistory(prev => {
+                    const newHistory = [...prev, message.data];
+                    if (newHistory.length > 60) return newHistory.slice(newHistory.length - 60);
+                    return newHistory;
+                })
+            }
+            if (message.oee) setOee(message.oee)
+        }
       } catch (e) {
         console.error("Error parsing WS message", e)
       }
@@ -42,7 +64,7 @@ function App() {
   }, [])
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4, pb: 10 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <Typography variant="h4" component="h1">Universal OEE Interface</Typography>
         <div style={{
@@ -101,6 +123,21 @@ function App() {
             </Grid>
         </Grid>
 
+        {/* Historical Charts for Gauges */}
+        <Grid item xs={12}>
+             <Typography variant="h6" gutterBottom>Trends</Typography>
+             <Grid container spacing={2}>
+                {Object.entries(schema)
+                    .filter(([key, type]) => type === 'Gauge')
+                    .map(([key, type]) => (
+                        <Grid item xs={12} md={6} key={key + "_chart"}>
+                            <HistoryChart title={key} data={history} dataKey={key} />
+                        </Grid>
+                    ))
+                }
+             </Grid>
+        </Grid>
+
         {/* Raw Data (Optional) */}
         <Grid item xs={12}>
              <Alert severity="info" sx={{ mt: 2 }}>
@@ -108,6 +145,7 @@ function App() {
              </Alert>
         </Grid>
       </Grid>
+      <ChatWidget />
     </Container>
   )
 }

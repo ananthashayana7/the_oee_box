@@ -15,6 +15,13 @@ class OEECalculator:
         dt = current_time - self.last_update
         self.last_update = current_time
 
+        # Re-validate keys against current schema
+        if self.state_key and schema.get(self.state_key) != "State":
+             self.state_key = None
+
+        if self.count_key and schema.get(self.count_key) != "Counter":
+             self.count_key = None
+
         # Auto-detect keys if not set
         if not self.state_key:
             for k, v in schema.items():

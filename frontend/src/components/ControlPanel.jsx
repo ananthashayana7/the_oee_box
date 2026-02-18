@@ -5,7 +5,9 @@ import axios from 'axios';
 const ControlPanel = () => {
   const sendCommand = async (cmd) => {
     try {
-      await axios.post('http://localhost:8000/command', { command: cmd });
+      const hostname = window.location.hostname || 'localhost';
+      const protocol = window.location.protocol;
+      await axios.post(`${protocol}//${hostname}:8000/command`, { command: cmd });
       console.log(`Sent ${cmd}`);
     } catch (error) {
       console.error("Command failed", error);

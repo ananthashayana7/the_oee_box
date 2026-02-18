@@ -4,12 +4,14 @@ from pydantic import BaseModel
 import logging
 import asyncio
 import json
+from collections import deque
 from contextlib import asynccontextmanager
 from backend.mqtt_client import mqtt_service
 from backend.schema_inference import SchemaInferenceEngine
 from backend.oee import OEECalculator
 from backend.rl_agent import RLAgent
 from backend.command_gatekeeper import CommandGatekeeper
+from backend.copilot import ChatAgent
 from fastapi import HTTPException
 
 logging.basicConfig(level=logging.INFO)
@@ -19,14 +21,19 @@ logger = logging.getLogger("main")
 schema_engine = SchemaInferenceEngine()
 oee_calculator = OEECalculator()
 gatekeeper = CommandGatekeeper()
+chat_agent = ChatAgent()
 rl_agent = None
 current_data = {}
 latest_oee = {"availability": 0, "performance": 0, "quality": 0, "oee": 0}
 connected_websockets = set()
+history = deque(maxlen=60) # Store last 60 data points
 
 class Command(BaseModel):
     command: str
     target: str = "factory/line1/machine1/command"
+
+class ChatRequest(BaseModel):
+    query: str
 
 async def broadcast(message):
     for ws in list(connected_websockets):
@@ -37,7 +44,7 @@ async def broadcast(message):
             connected_websockets.discard(ws)
 
 async def handle_mqtt_message(topic, payload):
-    global current_data, latest_oee, schema_engine, oee_calculator
+    global current_data, latest_oee, schema_engine, oee_calculator, history
     try:
         # Only process data topic for OEE
         if "data" not in topic:
@@ -45,6 +52,7 @@ async def handle_mqtt_message(topic, payload):
 
         data = json.loads(payload)
         current_data = data
+        history.append(data)
 
         # Process Schema
         schema_engine.process(data)
@@ -115,12 +123,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connected_websockets.add(websocket)
     try:
-        # Send initial state
+        # Send initial state + History
         initial_msg = {
-            "type": "update",
+            "type": "init",
             "data": current_data,
             "schema": schema_engine.get_schema(),
-            "oee": latest_oee
+            "oee": latest_oee,
+            "history": list(history)
         }
         await websocket.send_json(initial_msg)
         while True:
@@ -137,3 +146,13 @@ async def send_command(cmd: Command):
     logger.info(f"Authorized command: {cmd.command} to {cmd.target}")
     mqtt_service.publish(cmd.target, {"command": cmd.command})
     return {"status": "sent", "command": cmd.command}
+
+@app.post("/chat")
+async def chat_with_copilot(req: ChatRequest):
+    context = {
+        "oee": latest_oee,
+        "data": current_data,
+        "schema": schema_engine.get_schema()
+    }
+    response = chat_agent.process_query(req.query, context)
+    return {"response": response}
