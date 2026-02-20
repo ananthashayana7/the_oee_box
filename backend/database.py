@@ -52,7 +52,8 @@ class DatabaseManager:
                     timestamp REAL,
                     action TEXT,
                     user TEXT,
-                    details TEXT
+                    details TEXT,
+                    signature TEXT
                 )
             """)
 
@@ -93,9 +94,9 @@ class DatabaseManager:
             # Convert to list of dicts and reverse (oldest first)
             return [{"timestamp": row[0], key: row[1]} for row in rows][::-1]
 
-    async def log_audit(self, action, user, details=""):
+    async def log_audit(self, action, user, details="", signature=None):
         if not self.db: return
-        await self.db.execute("INSERT INTO audit_logs (timestamp, action, user, details) VALUES (?, ?, ?, ?)", (time.time(), action, user, details))
+        await self.db.execute("INSERT INTO audit_logs (timestamp, action, user, details, signature) VALUES (?, ?, ?, ?, ?)", (time.time(), action, user, details, signature))
         await self.db.commit()
 
     async def create_alert(self, message, severity="info"):

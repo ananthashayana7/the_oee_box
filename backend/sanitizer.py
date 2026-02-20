@@ -8,6 +8,7 @@ class DataSanitizer:
     def __init__(self):
         self.rolling_windows = {} # key -> deque(maxlen=20)
         self.trust_scores = {} # key -> float (0.0 to 1.0)
+        self.explanations = {} # key -> str
         self.min_trust = 0.5
         self.max_history = 20
 
@@ -64,21 +65,25 @@ class DataSanitizer:
                         # Hold last value (Coasting Mode)
                         sanitized_val = last_val
                         trust_scores[key] = max(0.1, current_trust - 0.2)
+                        self.explanations[key] = f"Spike detected: {last_val} -> {value}"
                         logger.warning(f"Sanitizer: Spike in {key} ({last_val} -> {value}). Coasting.")
                     else:
                         sanitized_val = value
                         trust_scores[key] = min(1.0, current_trust + 0.1) # Slowly regain trust
+                        self.explanations[key] = "Signal stable"
                 else:
                     sanitized_val = value
                     trust_scores[key] = 1.0
+                    self.explanations[key] = "Baseline established"
             else:
                 sanitized_val = value
                 trust_scores[key] = 1.0
+                self.explanations[key] = "Initializing history"
 
             sanitized[key] = sanitized_val
             window.append(sanitized_val) # Append the *sanitized* value to history to smooth further
             self.trust_scores[key] = trust_scores[key]
 
-        return sanitized, trust_scores
+        return sanitized, trust_scores, self.explanations
 
 sanitizer = DataSanitizer()

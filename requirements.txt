@@ -3,3 +3,14 @@ uvicorn
 paho-mqtt
 websockets
 amqtt
+aiosqlite
+bcrypt
+python-jose[cryptography]
+cryptography
+fpdf
+sentence-transformers
+faiss-cpu
+numpy
+requests
+asyncua
+pymodbus

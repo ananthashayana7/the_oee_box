@@ -1,69 +1,71 @@
 import logging
 import random
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import faiss
 
 logger = logging.getLogger("copilot")
 
 class ChatAgent:
     def __init__(self):
-        self.responses = {
-            "hello": ["Hello! How can I assist you with the machine today?", "Greetings, operator."],
-            "status": ["The machine is currently {state}.", "Current operational status: {state}."],
-            "oee": ["The OEE is currently {oee}%. Availability: {availability}%, Performance: {performance}%, Quality: {quality}%."],
-            "fault": ["There are no active faults reported.", "System is healthy."],
-            "stop": ["To stop the machine, use the 'STOP' button in the control panel or type 'STOP'."],
-            "optimize": ["I can optimize the machine settings. Sending 'OPTIMIZE' command will adjust parameters."],
-            "default": ["I'm not sure about that. Try asking about 'status', 'OEE', or 'faults'."]
-        }
+        logger.info("Initializing Semantic Agent (RAG)...")
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.dimension = 384
+        self.index = faiss.IndexFlatL2(self.dimension)
+        self.documents = []
+
+        # Seed Knowledge Base
+        self.add_knowledge("Machine is STOPPED when state code is 0.")
+        self.add_knowledge("Machine is RUNNING when state code is 1.")
+        self.add_knowledge("Machine is in FAULT when state code is 2.")
+        self.add_knowledge("OEE below 50% indicates poor performance.")
+        self.add_knowledge("Use the STOP button to halt production immediately.")
+        self.add_knowledge("The Trust Score indicates signal quality. Low trust means sensor noise.")
+
+    def add_knowledge(self, text):
+        embedding = self.model.encode([text])
+        self.index.add(np.array(embedding, dtype=np.float32))
+        self.documents.append(text)
 
     def process_query(self, query: str, context: dict) -> str:
         """
-        Process a natural language query using simple keyword matching and context injection.
-        context: {
-            "oee": {...},
-            "data": {...},
-            "schema": {...}
-        }
+        Semantic RAG: Embed query, find relevant docs, augment response.
         """
-        query = query.lower()
+        # 1. Retrieve Knowledge
+        q_embed = self.model.encode([query])
+        D, I = self.index.search(np.array(q_embed, dtype=np.float32), k=2)
 
-        # Extract context
+        retrieved_context = [self.documents[i] for i in I[0] if i < len(self.documents)]
+        knowledge_snippet = " ".join(retrieved_context)
+
+        # 2. Extract Real-Time Context
         oee_data = context.get("oee", {})
         sensor_data = context.get("data", {})
-
-        # Determine current state text
         state_code = sensor_data.get("state_code", 0)
         state_map = {0: "STOPPED", 1: "RUNNING", 2: "FAULT"}
         current_state = state_map.get(state_code, "UNKNOWN")
 
-        # Logic
-        if "hello" in query or "hi" in query:
-            return random.choice(self.responses["hello"])
+        # 3. Heuristic Generation (Mocking LLM generation for speed)
+        # In a real app, we would feed `knowledge_snippet` + `context` into Llama/GPT.
 
-        if "status" in query or "state" in query or "doing" in query:
-            return random.choice(self.responses["status"]).format(state=current_state)
+        response = f"Context: {knowledge_snippet}\n\n"
 
-        if "oee" in query or "performance" in query or "efficiency" in query:
-            return random.choice(self.responses["oee"]).format(
-                oee=oee_data.get("oee", 0),
-                availability=oee_data.get("availability", 0),
-                performance=oee_data.get("performance", 0),
-                quality=oee_data.get("quality", 0)
-            )
+        if "status" in query.lower() or "doing" in query.lower():
+            response += f"Current State: {current_state} (Code {state_code})."
+        elif "oee" in query.lower():
+            response += f"OEE: {oee_data.get('oee', 0)}%. Trust Score: {oee_data.get('trust', 1.0)*100:.0f}%."
+        elif "trust" in query.lower():
+             response += f"Signal Confidence: {oee_data.get('trust', 1.0)*100:.0f}%. "
+             if oee_data.get('trust', 1.0) < 0.8:
+                 response += "Warning: High noise detected."
+        else:
+            # Generic sensor lookup
+            found = False
+            for k, v in sensor_data.items():
+                if k in query.lower():
+                    response += f"{k}: {v}."
+                    found = True
+            if not found:
+                response += "I'm analyzing the telemetry. Please ask about specific metrics."
 
-        if "fault" in query or "error" in query or "problem" in query:
-            if state_code == 2:
-                return f"ALERT: The machine is in FAULT state (Code 2). Check sensor inputs."
-            return random.choice(self.responses["fault"])
-
-        if "stop" in query:
-            return random.choice(self.responses["stop"])
-
-        if "optimize" in query:
-            return random.choice(self.responses["optimize"])
-
-        # Fallback: Check if user is asking about a specific sensor value
-        for key, value in sensor_data.items():
-            if key in query:
-                return f"The current value of '{key}' is {value}."
-
-        return random.choice(self.responses["default"])
+        return response

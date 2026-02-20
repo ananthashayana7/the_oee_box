@@ -33,6 +33,7 @@ connected_websockets = set()
 class Command(BaseModel):
     command: str
     target: str = "factory/line1/machine1/command"
+    signature: str | None = None
 
 class ChatRequest(BaseModel):
     query: str
@@ -64,7 +65,7 @@ async def handle_mqtt_message(topic, payload):
         raw_data = json.loads(payload)
 
         # Sanitization (The Bouncer)
-        data, trust_scores = machine.sanitizer.process(raw_data)
+        data, trust_scores, explanations = machine.sanitizer.process(raw_data)
         machine.current_data = data
 
         # Persist to DB (Sanitized)
@@ -103,7 +104,8 @@ async def handle_mqtt_message(topic, payload):
             "oee": machine.latest_oee,
             "alerts": alerts,
             "trust": round(global_trust, 2),
-            "virtual_keys": v_keys
+            "virtual_keys": v_keys,
+            "explanations": explanations
         }
         await broadcast(msg)
     except json.JSONDecodeError:
@@ -212,12 +214,12 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @app.post("/command")
 async def send_command(cmd: Command, current_user: User = Depends(get_current_active_user)):
-    if not gatekeeper.validate(cmd.command, cmd.target):
+    if not gatekeeper.validate(cmd.command, cmd.target, cmd.signature):
         logger.warning(f"Rejected command: {cmd.command} to {cmd.target} by {current_user.username}")
         raise HTTPException(status_code=403, detail="Command denied by Security Gatekeeper")
 
     # Audit Log
-    await db_manager.log_audit("COMMAND", current_user.username, f"Sent {cmd.command}")
+    await db_manager.log_audit("COMMAND", current_user.username, f"Sent {cmd.command}", signature=cmd.signature)
 
     logger.info(f"Authorized command: {cmd.command} to {cmd.target} by {current_user.username}")
     mqtt_service.publish(cmd.target, {"command": cmd.command})

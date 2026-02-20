@@ -4,6 +4,7 @@ import DynamicWidget from './components/DynamicWidget';
 import ControlPanel from './components/ControlPanel';
 import ChatWidget from './components/ChatWidget';
 import HistoryChart from './components/HistoryChart';
+import CanvasHistoryChart from './components/CanvasHistoryChart';
 import AuditLog from './components/AuditLog';
 import PlantOverview from './components/PlantOverview';
 import Login from './Login';
@@ -194,7 +195,7 @@ function App() {
                                 .filter(([key, type]) => type === 'Gauge')
                                 .map(([key, type]) => (
                                     <Grid item xs={12} md={6} key={key + "_chart"}>
-                                        <HistoryChart title={key} data={history} dataKey={key} />
+                                        <CanvasHistoryChart title={key} data={history} dataKey={key} />
                                     </Grid>
                                 ))
                             }

@@ -7,6 +7,8 @@ import bcrypt
 from backend.models import TokenData, User, UserInDB
 from backend.database import db_manager
 import os
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkeywhichshouldbechanged")
 ALGORITHM = "HS256"
@@ -29,6 +31,33 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+# Key Management (Mock for Demo)
+# In real app, keys generated on client device or secure enclave
+KEY_FILE = "admin_key.pem"
+
+if os.path.exists(KEY_FILE):
+    with open(KEY_FILE, "rb") as f:
+        admin_private_key = serialization.load_pem_private_key(
+            f.read(),
+            password=None
+        )
+else:
+    admin_private_key = ec.generate_private_key(ec.SECP256R1())
+    with open(KEY_FILE, "wb") as f:
+        f.write(admin_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ))
+
+admin_public_key = admin_private_key.public_key()
+
+def get_admin_public_key_pem():
+    return admin_public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode('utf-8')
 
 async def get_user(username: str):
     if not db_manager.db: return None
