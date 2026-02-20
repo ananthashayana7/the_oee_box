@@ -28,11 +28,13 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS telemetry (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp REAL,
+                    machine_id TEXT,
                     key TEXT,
                     value REAL
                 )
             """)
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON telemetry (timestamp)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_machine ON telemetry (machine_id)")
 
             # Users Table (Auth)
             await cursor.execute("""
@@ -74,19 +76,19 @@ class DatabaseManager:
 
             await self.db.commit()
 
-    async def insert_telemetry(self, timestamp, key, value):
+    async def insert_telemetry(self, timestamp, machine_id, key, value):
         if not self.db: return
         try:
             # Only store numeric values for charting
             if isinstance(value, (int, float)) and not isinstance(value, bool):
-                 await self.db.execute("INSERT INTO telemetry (timestamp, key, value) VALUES (?, ?, ?)", (timestamp, key, value))
+                 await self.db.execute("INSERT INTO telemetry (timestamp, machine_id, key, value) VALUES (?, ?, ?, ?)", (timestamp, machine_id, key, value))
                  await self.db.commit()
         except Exception as e:
             logger.error(f"DB Write Error: {e}")
 
-    async def get_telemetry_history(self, key, limit=60):
+    async def get_telemetry_history(self, machine_id, key, limit=60):
         if not self.db: return []
-        async with self.db.execute("SELECT timestamp, value FROM telemetry WHERE key = ? ORDER BY timestamp DESC LIMIT ?", (key, limit)) as cursor:
+        async with self.db.execute("SELECT timestamp, value FROM telemetry WHERE machine_id = ? AND key = ? ORDER BY timestamp DESC LIMIT ?", (machine_id, key, limit)) as cursor:
             rows = await cursor.fetchall()
             # Convert to list of dicts and reverse (oldest first)
             return [{"timestamp": row[0], key: row[1]} for row in rows][::-1]

@@ -5,21 +5,20 @@ import ControlPanel from './components/ControlPanel';
 import ChatWidget from './components/ChatWidget';
 import HistoryChart from './components/HistoryChart';
 import AuditLog from './components/AuditLog';
+import PlantOverview from './components/PlantOverview';
 import Login from './Login';
 import { Button } from '@mui/material';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
-  const [data, setData] = useState({})
-  const [history, setHistory] = useState([])
-  const [alerts, setAlerts] = useState([])
-  const [schema, setSchema] = useState({})
-  const [oee, setOee] = useState({})
-  const [connected, setConnected] = useState(false)
-  const ws = useRef(null)
+  const [machines, setMachines] = useState({});
+  const [selectedMachineId, setSelectedMachineId] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [connected, setConnected] = useState(false);
+  const ws = useRef(null);
 
   const handleLogin = (t) => {
-    console.log("App: Setting token", t);
     localStorage.setItem('token', t);
     setToken(t);
   };
@@ -30,13 +29,21 @@ function App() {
     if (ws.current) ws.current.close();
   };
 
+  const handleExport = async () => {
+      try {
+        const hostname = window.location.hostname || 'localhost';
+        const protocol = window.location.protocol;
+        // Trigger download
+        window.open(`${protocol}//${hostname}:8000/report/pdf`, '_blank');
+      } catch (e) {
+          console.error("Export failed", e);
+      }
+  }
+
   useEffect(() => {
-    console.log("App: Effect triggered. Token:", token);
     if (!token) return;
 
-    // In production, use window.location.hostname
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Use hostname to allow access from other devices
     const hostname = window.location.hostname || 'localhost';
     const wsUrl = `${protocol}//${hostname}:8000/ws`;
 
@@ -51,28 +58,32 @@ function App() {
       try {
         const message = JSON.parse(event.data)
 
-        if (message.type === 'init') {
-            if (message.schema) setSchema(message.schema)
-            if (message.data) setData(message.data)
-            if (message.oee) setOee(message.oee)
-            if (message.history) setHistory(message.history)
-            if (message.alerts) setAlerts(message.alerts)
-            if (message.trust !== undefined) setTrust(message.trust)
-            if (message.virtual_keys) setVirtualKeys(message.virtual_keys)
+        if (message.type === 'plant_init') {
+            setMachines(message.machines);
+            if (message.history) setHistory(message.history);
         } else if (message.type === 'update') {
-            if (message.schema) setSchema(message.schema)
-            if (message.data) {
-                setData(message.data)
-                setHistory(prev => {
-                    const newHistory = [...prev, message.data];
+            const { machine_id, data, schema, oee, alerts: newAlerts, trust, virtual_keys } = message;
+
+            setMachines(prev => ({
+                ...prev,
+                [machine_id]: {
+                    data,
+                    schema,
+                    oee: { ...oee, trust },
+                    virtual_keys
+                }
+            }));
+
+            if (newAlerts) setAlerts(newAlerts);
+
+            // Update history only if looking at this machine (simplification)
+            if (selectedMachineId === machine_id && data) {
+                 setHistory(prev => {
+                    const newHistory = [...prev, data];
                     if (newHistory.length > 60) return newHistory.slice(newHistory.length - 60);
                     return newHistory;
                 })
             }
-            if (message.oee) setOee(message.oee)
-            if (message.alerts) setAlerts(message.alerts)
-            if (message.trust !== undefined) setTrust(message.trust)
-            if (message.virtual_keys) setVirtualKeys(message.virtual_keys)
         }
       } catch (e) {
         console.error("Error parsing WS message", e)
@@ -87,23 +98,19 @@ function App() {
     return () => {
       if (ws.current) ws.current.close()
     }
-  }, [token])
+  }, [token, selectedMachineId])
 
   if (!token) {
     return <Login setToken={handleLogin} />;
   }
+
+  const activeMachine = selectedMachineId ? machines[selectedMachineId] : null;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4, pb: 10 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <Typography variant="h4" component="h1">Universal OEE Interface</Typography>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ textAlign: 'right', marginRight: '10px' }}>
-                <Typography variant="caption" display="block">Trust Score</Typography>
-                <Typography variant="body1" sx={{ color: trust < 0.8 ? 'red' : 'green', fontWeight: 'bold' }}>
-                    {Math.round(trust * 100)}%
-                </Typography>
-            </div>
             <Button variant="outlined" color="inherit" onClick={handleLogout}>Logout</Button>
             <div style={{
             padding: '5px 10px',
@@ -122,81 +129,86 @@ function App() {
         </Alert>
       ))}
 
-      <Grid container spacing={3}>
-        {/* OEE Section */}
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="h6" gutterBottom>OEE Metrics</Typography>
-            <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ textAlign: 'center', margin: '10px' }}>
-                    <Typography variant="h2">{oee.oee || 0}%</Typography>
-                    <Typography variant="subtitle1">Overall</Typography>
-                </div>
-                <div style={{ textAlign: 'center', margin: '10px' }}>
-                    <Typography variant="h4">{oee.availability || 0}%</Typography>
-                    <Typography variant="subtitle2">Availability</Typography>
-                </div>
-                <div style={{ textAlign: 'center', margin: '10px' }}>
-                    <Typography variant="h4">{oee.performance || 0}%</Typography>
-                    <Typography variant="subtitle2">Performance</Typography>
-                </div>
-                <div style={{ textAlign: 'center', margin: '10px' }}>
-                    <Typography variant="h4">{oee.quality || 0}%</Typography>
-                    <Typography variant="subtitle2">Quality</Typography>
-                </div>
-            </div>
-          </Paper>
-        </Grid>
+      {!selectedMachineId ? (
+          <PlantOverview machines={machines} onSelectMachine={setSelectedMachineId} onExport={handleExport} />
+      ) : (
+        <Box>
+            <Button onClick={() => setSelectedMachineId(null)} sx={{ mb: 2 }}>&larr; Back to Plant View</Button>
+            <Typography variant="h5" gutterBottom>Machine: {selectedMachineId.toUpperCase()}</Typography>
 
-        {/* Control Section */}
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
-            <Typography variant="h6" gutterBottom align="center">Mission Control</Typography>
-            <ControlPanel token={token} />
-          </Paper>
-        </Grid>
+            {activeMachine && (
+                <Grid container spacing={3}>
+                    {/* OEE Section */}
+                    <Grid item xs={12} md={8}>
+                    <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="h6" gutterBottom>OEE Metrics</Typography>
+                        <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h2">{activeMachine.oee?.oee || 0}%</Typography>
+                                <Typography variant="subtitle1">Overall</Typography>
+                            </div>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h4">{activeMachine.oee?.availability || 0}%</Typography>
+                                <Typography variant="subtitle2">Availability</Typography>
+                            </div>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h4">{activeMachine.oee?.performance || 0}%</Typography>
+                                <Typography variant="subtitle2">Performance</Typography>
+                            </div>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h4">{activeMachine.oee?.quality || 0}%</Typography>
+                                <Typography variant="subtitle2">Quality</Typography>
+                            </div>
+                        </div>
+                    </Paper>
+                    </Grid>
 
-        {/* Dynamic Widgets */}
-        <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom>Live Telemetry (Auto-Discovered)</Typography>
-            <Grid container spacing={2}>
-                {Object.entries(schema).map(([key, type]) => {
-                    const isVirtual = virtualKeys ? virtualKeys.some(k => k.includes(key)) : false;
-                    return (
-                        <Grid item xs={12} sm={6} md={3} key={key}>
-                            <DynamicWidget name={key} value={data[key]} type={type} isVirtual={isVirtual} />
+                    {/* Control Section */}
+                    <Grid item xs={12} md={4}>
+                    <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
+                        <Typography variant="h6" gutterBottom align="center">Mission Control</Typography>
+                        <ControlPanel token={token} />
+                    </Paper>
+                    </Grid>
+
+                    {/* Dynamic Widgets */}
+                    <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom>Live Telemetry (Auto-Discovered)</Typography>
+                        <Grid container spacing={2}>
+                            {Object.entries(activeMachine.schema || {}).map(([key, type]) => {
+                                const isVirtual = activeMachine.virtual_keys ? activeMachine.virtual_keys.some(k => k.includes(key)) : false;
+                                return (
+                                    <Grid item xs={12} sm={6} md={3} key={key}>
+                                        <DynamicWidget name={key} value={activeMachine.data[key]} type={type} isVirtual={isVirtual} />
+                                    </Grid>
+                                )
+                            })}
                         </Grid>
-                    )
-                })}
-            </Grid>
-        </Grid>
+                    </Grid>
 
-        {/* Historical Charts for Gauges */}
-        <Grid item xs={12}>
-             <Typography variant="h6" gutterBottom>Trends</Typography>
-             <Grid container spacing={2}>
-                {Object.entries(schema)
-                    .filter(([key, type]) => type === 'Gauge')
-                    .map(([key, type]) => (
-                        <Grid item xs={12} md={6} key={key + "_chart"}>
-                            <HistoryChart title={key} data={history} dataKey={key} />
+                    {/* Historical Charts for Gauges */}
+                    <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom>Trends</Typography>
+                        <Grid container spacing={2}>
+                            {Object.entries(activeMachine.schema || {})
+                                .filter(([key, type]) => type === 'Gauge')
+                                .map(([key, type]) => (
+                                    <Grid item xs={12} md={6} key={key + "_chart"}>
+                                        <HistoryChart title={key} data={history} dataKey={key} />
+                                    </Grid>
+                                ))
+                            }
                         </Grid>
-                    ))
-                }
-             </Grid>
-        </Grid>
+                    </Grid>
 
-        {/* Raw Data (Optional) */}
-        <Grid item xs={12}>
-             <Alert severity="info" sx={{ mt: 2 }}>
-                Schema: {JSON.stringify(schema)}
-             </Alert>
-        </Grid>
+                    <Grid item xs={12}>
+                        <AuditLog />
+                    </Grid>
+                </Grid>
+            )}
+        </Box>
+      )}
 
-        <Grid item xs={12}>
-            <AuditLog />
-        </Grid>
-      </Grid>
       <ChatWidget />
     </Container>
   )

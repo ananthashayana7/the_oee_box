@@ -14,8 +14,12 @@ COMMAND_TOPIC = "factory/line1/machine1/command"
 
 # CLI Arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--mode", choices=["clean", "dirty", "dumb"], default="clean", help="Simulation mode")
+parser.add_argument("--mode", choices=["clean", "dirty", "dumb", "faulty"], default="clean", help="Simulation mode")
+parser.add_argument("--id", default="machine1", help="Machine ID")
 args = parser.parse_args()
+
+DATA_TOPIC = f"factory/line1/{args.id}/data"
+COMMAND_TOPIC = f"factory/line1/{args.id}/command"
 
 # Machine State
 state = {
@@ -28,10 +32,10 @@ state = {
 
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
-        print(f"Simulator connected to broker at {BROKER}:{PORT}")
+        print(f"Simulator {args.id} connected to broker at {BROKER}:{PORT}")
         client.subscribe(COMMAND_TOPIC)
     else:
-        print(f"Simulator failed to connect, return code {rc}")
+        print(f"Simulator {args.id} failed to connect, return code {rc}")
 
 def on_message(client, userdata, msg):
     try:
@@ -109,12 +113,18 @@ try:
             if random.random() < 0.1:
                 # Spike
                 payload["temperature"] = 500.0
-                print("SIMULATOR: Injected Temperature Spike (500.0)")
+                print(f"SIMULATOR {args.id}: Injected Temperature Spike (500.0)")
 
             if random.random() < 0.1:
                 # Drop key
                 payload.pop("state_code", None)
-                print("SIMULATOR: Dropped state_code")
+                print(f"SIMULATOR {args.id}: Dropped state_code")
+
+        elif args.mode == "faulty":
+            # Inject Fault state occasionally
+            if state["production_count"] % 20 == 0:
+                payload["state_code"] = 2
+                print(f"SIMULATOR {args.id}: Injected FAULT (Code 2)")
 
         client.publish(DATA_TOPIC, json.dumps(payload))
         # print(f"Published: {payload}")
