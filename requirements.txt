@@ -14,3 +14,7 @@ numpy
 requests
 asyncua
 pymodbus
+python-multipart
+passlib[bcrypt]
+llama-cpp-python
+google-generativeai
