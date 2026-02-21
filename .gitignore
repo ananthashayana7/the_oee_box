@@ -1,9 +1,13 @@
 __pycache__/
+*.py[cod]
+*$py.class
+*.db
+*.sqlite
 *.log
-*.pyc
+*.pem
+.env
+.venv
 node_modules/
 dist/
-venv/
-.env
-.DS_Store
+build/
 verification/

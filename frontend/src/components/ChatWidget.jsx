@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Paper, TextField, Button, Typography, List, ListItem, ListItemText, IconButton, Collapse } from '@mui/material';
 import axios from 'axios';
 
-const ChatWidget = () => {
+const ChatWidget = ({ machineId }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState([
@@ -26,7 +26,10 @@ const ChatWidget = () => {
     try {
       const hostname = window.location.hostname || 'localhost';
       const protocol = window.location.protocol;
-      const res = await axios.post(`${protocol}//${hostname}:8000/chat`, { query: userMsg.text });
+      const res = await axios.post(`${protocol}//${hostname}:8000/chat`, {
+        query: userMsg.text,
+        machine_id: machineId
+      });
       const botMsg = { sender: "bot", text: res.data.response };
       setHistory(prev => [...prev, botMsg]);
     } catch (error) {

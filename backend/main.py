@@ -37,6 +37,7 @@ class Command(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
+    machine_id: str | None = None
 
 async def broadcast(message):
     for ws in list(connected_websockets):
@@ -227,8 +228,9 @@ async def send_command(cmd: Command, current_user: User = Depends(get_current_ac
 
 @app.post("/chat")
 async def chat_with_copilot(req: ChatRequest):
-    # Default to machine_1 for chat context for now
-    m = machine_manager.get_machine("machine_1")
+    # Use selected machine if provided, else default to machine_1
+    target = req.machine_id if req.machine_id else "machine_1"
+    m = machine_manager.get_machine(target)
     context = {
         "oee": m.latest_oee,
         "data": m.current_data,

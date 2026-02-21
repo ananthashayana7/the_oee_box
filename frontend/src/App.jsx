@@ -210,7 +210,7 @@ function App() {
         </Box>
       )}
 
-      <ChatWidget />
+      <ChatWidget machineId={selectedMachineId} />
     </Container>
   )
 }
