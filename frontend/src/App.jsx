@@ -131,7 +131,7 @@ function App() {
       ))}
 
       {!selectedMachineId ? (
-          <PlantOverview machines={machines} onSelectMachine={setSelectedMachineId} onExport={handleExport} />
+          <PlantOverview machines={machines} onSelectMachine={setSelectedMachineId} onExport={handleExport} token={token} />
       ) : (
         <Box>
             <Button onClick={() => setSelectedMachineId(null)} sx={{ mb: 2 }}>&larr; Back to Plant View</Button>

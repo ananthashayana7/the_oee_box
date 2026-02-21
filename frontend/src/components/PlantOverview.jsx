@@ -2,9 +2,17 @@ import React, { useState } from 'react';
 import { Grid, Typography, Button, Box, TextField, InputAdornment } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MachineCard from './MachineCard';
+import MachineSettings from './MachineSettings';
 
-const PlantOverview = ({ machines, onSelectMachine, onExport }) => {
+const PlantOverview = ({ machines, onSelectMachine, onExport, token }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsMachine, setSettingsMachine] = useState(null);
+
+  const handleSettings = (machineId) => {
+      setSettingsMachine(machineId);
+      setSettingsOpen(true);
+  };
 
   const filteredMachines = Object.entries(machines).filter(([id, state]) => {
       return id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -44,6 +52,7 @@ const PlantOverview = ({ machines, onSelectMachine, onExport }) => {
                             trust={state.oee?.trust || 1.0}
                             status={status}
                             onClick={() => onSelectMachine(id)}
+                            onSettings={handleSettings}
                         />
                     </Grid>
                 )
@@ -59,6 +68,15 @@ const PlantOverview = ({ machines, onSelectMachine, onExport }) => {
                 </Grid>
             )}
         </Grid>
+
+        {settingsMachine && (
+            <MachineSettings
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                machineId={settingsMachine}
+                token={token}
+            />
+        )}
     </Box>
   );
 };

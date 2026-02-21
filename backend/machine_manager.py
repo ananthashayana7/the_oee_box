@@ -2,6 +2,11 @@ from backend.schema_inference import SchemaInferenceEngine
 from backend.oee import OEECalculator
 from backend.sanitizer import DataSanitizer
 from backend.virtual_sensors import VirtualSensorFactory
+import logging
+import asyncio
+from backend.database import db_manager
+
+logger = logging.getLogger("machine_manager")
 
 class MachineState:
     def __init__(self, machine_id):
@@ -22,7 +27,23 @@ class MachineManager:
     def get_machine(self, machine_id):
         if machine_id not in self.machines:
             self.machines[machine_id] = MachineState(machine_id)
+            # Try to load config in background
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._load_config(machine_id))
+            except RuntimeError:
+                pass # Running in test/script context maybe?
         return self.machines[machine_id]
+
+    async def _load_config(self, machine_id):
+        try:
+            config = await db_manager.get_machine_config(machine_id)
+            if config:
+                if machine_id in self.machines:
+                    self.machines[machine_id].oee_calculator.set_config(config)
+                    logger.info(f"Loaded config for {machine_id}: {config}")
+        except Exception as e:
+            logger.warning(f"Failed to load config for {machine_id}: {e}")
 
     def get_all_states(self):
         return {

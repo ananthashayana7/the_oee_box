@@ -61,7 +61,6 @@ def get_admin_public_key_pem():
 
 async def get_user(username: str):
     if not db_manager.db: return None
-    # We need to make sure db is connected. It should be if running via FastAPI.
     try:
         async with db_manager.db.execute("SELECT username, password_hash, role FROM users WHERE username = ?", (username,)) as cursor:
             row = await cursor.fetchone()
@@ -100,5 +99,9 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
     return user
 
 async def get_current_active_user(current_user: Annotated[User, Depends(get_current_user)]):
-    # In future, check if user.disabled
+    return current_user
+
+async def get_authorized_user(current_user: Annotated[User, Depends(get_current_active_user)], required_roles: list[str] = ["engineer", "admin"]):
+    if current_user.role not in required_roles:
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions. Role '{current_user.role}' required.")
     return current_user

@@ -4,7 +4,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
-const MachineCard = ({ machineId, oee, trust, status, onClick }) => {
+const MachineCard = ({ machineId, oee, trust, status, onClick, onSettings }) => {
   const oeeVal = oee?.oee || 0;
   const isRunning = status === 1;
   const isFault = status === 2;
@@ -22,9 +22,14 @@ const MachineCard = ({ machineId, oee, trust, status, onClick }) => {
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">{machineId.toUpperCase()}</Typography>
-            {isFault ? <WarningIcon color="error" /> :
-             isRunning ? <CheckCircleIcon color="success" /> :
-             <SettingsIcon color="disabled" />}
+            <Box>
+                {isFault ? <WarningIcon color="error" sx={{mr: 1}} /> :
+                 isRunning ? <CheckCircleIcon color="success" sx={{mr: 1}} /> :
+                 null}
+                <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSettings(machineId); }}>
+                    <SettingsIcon fontSize="small" />
+                </IconButton>
+            </Box>
         </Box>
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>

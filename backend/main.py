@@ -12,8 +12,9 @@ from backend.command_gatekeeper import CommandGatekeeper
 from backend.copilot import ChatAgent
 from backend.database import db_manager
 from backend.alert_engine import alert_engine
-from backend.auth import authenticate_user, create_access_token, get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES
+from backend.auth import authenticate_user, create_access_token, get_current_active_user, get_authorized_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from backend.models import Token, User
+from backend.models_config import MachineConfig
 from backend.machine_manager import machine_manager
 from backend.reporting import generate_plant_report
 from fastapi import HTTPException, Depends, status
@@ -138,6 +139,14 @@ async def lifespan(app: FastAPI):
         rl_agent = RLAgent(get_machine1_oee, mode="shadow")
         asyncio.create_task(rl_agent.start())
 
+        # Start Data Retention Task
+        async def data_retention_loop():
+            while True:
+                await asyncio.sleep(3600) # Run every hour
+                await db_manager.cleanup_old_data(days=30)
+
+        asyncio.create_task(data_retention_loop())
+
     except RuntimeError:
         logger.warning("No running loop found for MQTT start")
 
@@ -211,10 +220,10 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "role": user.role}
 
 @app.post("/command")
-async def send_command(cmd: Command, current_user: User = Depends(get_current_active_user)):
+async def send_command(cmd: Command, current_user: User = Depends(get_authorized_user)):
     if not gatekeeper.validate(cmd.command, cmd.target, cmd.signature):
         logger.warning(f"Rejected command: {cmd.command} to {cmd.target} by {current_user.username}")
         raise HTTPException(status_code=403, detail="Command denied by Security Gatekeeper")
@@ -247,3 +256,22 @@ async def get_audit_logs(limit: int = 20):
 async def get_report():
     filename = await generate_plant_report()
     return FileResponse(filename, media_type='application/pdf', filename="plant_report.pdf")
+
+@app.get("/machines/{machine_id}/config")
+async def get_machine_config(machine_id: str, current_user: User = Depends(get_current_active_user)):
+    config = await db_manager.get_machine_config(machine_id)
+    if not config:
+        # Return default
+        return {"machine_id": machine_id, "ideal_cycle_time": 1.0, "shift_start_hour": 8}
+    return config
+
+@app.put("/machines/{machine_id}/config")
+async def update_machine_config(machine_id: str, config: MachineConfig, current_user: User = Depends(get_authorized_user)):
+    # Persist
+    await db_manager.update_machine_config(machine_id, config)
+
+    # Update Runtime
+    m = machine_manager.get_machine(machine_id)
+    m.oee_calculator.set_config(config.dict())
+
+    return {"status": "updated", "config": config}
