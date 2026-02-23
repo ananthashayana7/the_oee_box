@@ -236,7 +236,7 @@ async def send_command(cmd: Command, current_user: User = Depends(get_authorized
     return {"status": "sent", "command": cmd.command}
 
 @app.post("/chat")
-async def chat_with_copilot(req: ChatRequest):
+async def chat_with_copilot(req: ChatRequest, current_user: User = Depends(get_authorized_user)):
     # Use selected machine if provided, else default to machine_1
     target = req.machine_id if req.machine_id else "machine_1"
     m = machine_manager.get_machine(target)
@@ -249,7 +249,7 @@ async def chat_with_copilot(req: ChatRequest):
     return {"response": response}
 
 @app.get("/audit")
-async def get_audit_logs(limit: int = 20):
+async def get_audit_logs(limit: int = 20, current_user: User = Depends(get_authorized_user)):
     return await db_manager.get_audit_logs(limit)
 
 @app.get("/report/pdf")
