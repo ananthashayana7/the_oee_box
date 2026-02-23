@@ -11,11 +11,7 @@ const ControlPanel = ({ token, machineId }) => {
 
       await axios.post(
         `${protocol}//${hostname}:8000/command`,
-
-        { cmd: { command: cmd, target: "factory/line1/machine_1/command" } },
-=======
         { cmd: { command: cmd, target: target } },
-
         { headers: { Authorization: `Bearer ${token}` } }
       );
       console.log(`Sent ${cmd} to ${target}`);
