@@ -15,4 +15,3 @@ requests
 asyncua
 pymodbus
 google-generativeai
-python-multipart
