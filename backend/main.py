@@ -232,6 +232,16 @@ async def send_command(cmd: Command, current_user: User = Depends(get_authorized
     await db_manager.log_audit("COMMAND", current_user.username, f"Sent {cmd.command}", signature=cmd.signature)
 
     logger.info(f"Authorized command: {cmd.command} to {cmd.target} by {current_user.username}")
+    
+    # If it's a RESET, clear the sanitizer windows to avoid 'spike' rejection on the next update
+    if cmd.command == "RESET":
+        # Extract machine_id from target (e.g. factory/line1/machine_1/command)
+        parts = cmd.target.split('/')
+        if len(parts) >= 3:
+            machine_id = parts[2]
+            machine = machine_manager.get_machine(machine_id)
+            machine.sanitizer.reset_windows()
+
     mqtt_service.publish(cmd.target, {"command": cmd.command})
     return {"status": "sent", "command": cmd.command}
 
