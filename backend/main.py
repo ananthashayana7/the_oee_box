@@ -33,7 +33,7 @@ connected_websockets = set()
 
 class Command(BaseModel):
     command: str
-    target: str = "factory/line1/machine1/command"
+    target: str = "factory/line1/machine_1/command"
     signature: str | None = None
 
 class ChatRequest(BaseModel):
