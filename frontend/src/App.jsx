@@ -168,7 +168,7 @@ function App() {
                     <Grid item xs={12} md={4}>
                     <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
                         <Typography variant="h6" gutterBottom align="center">Mission Control</Typography>
-                        <ControlPanel token={token} />
+                        <ControlPanel token={token} machineId={selectedMachineId} />
                     </Paper>
                     </Grid>
 

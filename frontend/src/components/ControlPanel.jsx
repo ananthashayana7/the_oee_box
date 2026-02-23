@@ -2,17 +2,19 @@ import React from 'react';
 import { Button, Stack, ButtonGroup } from '@mui/material';
 import axios from 'axios';
 
-const ControlPanel = ({ token }) => {
+const ControlPanel = ({ token, machineId }) => {
   const sendCommand = async (cmd) => {
     try {
       const hostname = window.location.hostname || 'localhost';
       const protocol = window.location.protocol;
+      const target = `factory/line1/${machineId}/command`;
+
       await axios.post(
         `${protocol}//${hostname}:8000/command`,
-        { cmd: { command: cmd, target: "factory/line1/machine1/command" } },
+        { cmd: { command: cmd, target: target } },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      console.log(`Sent ${cmd}`);
+      console.log(`Sent ${cmd} to ${target}`);
     } catch (error) {
       console.error("Command failed", error);
     }
