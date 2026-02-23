@@ -134,6 +134,7 @@ function App() {
         <PlantOverview machines={machines} onSelectMachine={setSelectedMachineId} onExport={handleExport} token={token} />
       ) : (
         <Box>
+
           <Button onClick={() => setSelectedMachineId(null)} sx={{ mb: 2 }}>&larr; Back to Plant View</Button>
           <Typography variant="h5" gutterBottom>Machine: {selectedMachineId.toUpperCase()}</Typography>
 
@@ -199,6 +200,78 @@ function App() {
                       </Grid>
                     ))
                   }
+            <Button onClick={() => setSelectedMachineId(null)} sx={{ mb: 2 }}>&larr; Back to Plant View</Button>
+            <Typography variant="h5" gutterBottom>Machine: {selectedMachineId.toUpperCase()}</Typography>
+
+            {activeMachine && (
+                <Grid container spacing={3}>
+                    {/* OEE Section */}
+                    <Grid item xs={12} md={8}>
+                    <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="h6" gutterBottom>OEE Metrics</Typography>
+                        <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h2">{activeMachine.oee?.oee || 0}%</Typography>
+                                <Typography variant="subtitle1">Overall</Typography>
+                            </div>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h4">{activeMachine.oee?.availability || 0}%</Typography>
+                                <Typography variant="subtitle2">Availability</Typography>
+                            </div>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h4">{activeMachine.oee?.performance || 0}%</Typography>
+                                <Typography variant="subtitle2">Performance</Typography>
+                            </div>
+                            <div style={{ textAlign: 'center', margin: '10px' }}>
+                                <Typography variant="h4">{activeMachine.oee?.quality || 0}%</Typography>
+                                <Typography variant="subtitle2">Quality</Typography>
+                            </div>
+                        </div>
+                    </Paper>
+                    </Grid>
+
+                    {/* Control Section */}
+                    <Grid item xs={12} md={4}>
+                    <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
+                        <Typography variant="h6" gutterBottom align="center">Mission Control</Typography>
+                        <ControlPanel token={token} machineId={selectedMachineId} />
+                    </Paper>
+                    </Grid>
+
+                    {/* Dynamic Widgets */}
+                    <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom>Live Telemetry (Auto-Discovered)</Typography>
+                        <Grid container spacing={2}>
+                            {Object.entries(activeMachine.schema || {}).map(([key, type]) => {
+                                const isVirtual = activeMachine.virtual_keys ? activeMachine.virtual_keys.some(k => k.includes(key)) : false;
+                                return (
+                                    <Grid item xs={12} sm={6} md={3} key={key}>
+                                        <DynamicWidget name={key} value={activeMachine.data[key]} type={type} isVirtual={isVirtual} />
+                                    </Grid>
+                                )
+                            })}
+                        </Grid>
+                    </Grid>
+
+                    {/* Historical Charts for Gauges */}
+                    <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom>Trends</Typography>
+                        <Grid container spacing={2}>
+                            {Object.entries(activeMachine.schema || {})
+                                .filter(([key, type]) => type === 'Gauge')
+                                .map(([key, type]) => (
+                                    <Grid item xs={12} md={6} key={key + "_chart"}>
+                                        <CanvasHistoryChart title={key} data={history} dataKey={key} />
+                                    </Grid>
+                                ))
+                            }
+                        </Grid>
+                    </Grid>
+
+                    <Grid item xs={12}>
+                        <AuditLog />
+                    </Grid>
+
                 </Grid>
               </Grid>
 
