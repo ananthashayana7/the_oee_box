@@ -12,13 +12,6 @@ class DataSanitizer:
         self.min_trust = 0.5
         self.max_history = 20
 
-    def reset_windows(self):
-        """Clear history to allow for legitimate big jumps (e.g. after RESET)"""
-        logger.info("Sanitizer: Resetting all rolling windows.")
-        self.rolling_windows = {}
-        self.trust_scores = {}
-        self.explanations = {}
-
     def process(self, data):
         """
         Takes raw data dict.
@@ -63,36 +56,20 @@ class DataSanitizer:
                 # Or if value jumps significantly from last value.
 
                 last_val = window[-1]
-
-                # Special Case: production_count should always be allowed to increment
-                # and if it drops to 0, it's a reset (already handled by reset_windows generally, 
-                # but let's be safe here too).
-                if key == "production_count":
-                    if value >= last_val:
-                        sanitized_val = value
-                        trust_scores[key] = 1.0
-                        self.explanations[key] = "Count increment allowed"
-                    else:
-                        # Legitimate drop? Most likely a reset that wasn't captured or a wrap.
-                        sanitized_val = value
-                        trust_scores[key] = 0.8
-                        self.explanations[key] = "Count reset/drop"
-                
-                # Avoid division by zero and handle small value noise
-                elif abs(last_val) > 0.01:
+                # Avoid division by zero
+                if abs(last_val) > 0.01:
                     percent_change = abs(value - last_val) / abs(last_val)
-                    absolute_change = abs(value - last_val)
 
-                    # Only flag as spike if BOTH percent change is huge AND absolute change is significant
-                    if percent_change > 0.8 and absolute_change > 0.5: 
+                    if percent_change > 0.5: # 50% jump in one step
                         # Spike Detected!
+                        # Hold last value (Coasting Mode)
                         sanitized_val = last_val
                         trust_scores[key] = max(0.1, current_trust - 0.2)
                         self.explanations[key] = f"Spike detected: {last_val} -> {value}"
                         logger.warning(f"Sanitizer: Spike in {key} ({last_val} -> {value}). Coasting.")
                     else:
                         sanitized_val = value
-                        trust_scores[key] = min(1.0, current_trust + 0.1)
+                        trust_scores[key] = min(1.0, current_trust + 0.1) # Slowly regain trust
                         self.explanations[key] = "Signal stable"
                 else:
                     sanitized_val = value

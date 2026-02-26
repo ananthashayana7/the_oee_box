@@ -7,15 +7,12 @@ import bcrypt
 from backend.models import TokenData, User, UserInDB
 from backend.database import db_manager
 import os
-import logging
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-logger = logging.getLogger("auth")
-
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkeywhichshouldbechanged")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440 # 24 Hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -37,8 +34,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
 # Key Management (Mock for Demo)
 # In real app, keys generated on client device or secure enclave
-KEY_FILE = os.path.join(os.path.dirname(__file__), "admin_key.pem")
-logger.info(f"Using security key at: {os.path.abspath(KEY_FILE)}")
+KEY_FILE = "admin_key.pem"
 
 if os.path.exists(KEY_FILE):
     with open(KEY_FILE, "rb") as f:
@@ -89,20 +85,16 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # Add leeway for clock skew
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"leeway": 60})
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            logger.warning("Token payload missing 'sub'")
             raise credentials_exception
         token_data = TokenData(username=username)
-    except JWTError as e:
-        logger.warning(f"JWT Decode Error: {e}")
+    except JWTError:
         raise credentials_exception
 
     user = await get_user(username=token_data.username)
     if user is None:
-        logger.warning(f"User not found: {token_data.username}")
         raise credentials_exception
     return user
 
@@ -111,6 +103,5 @@ async def get_current_active_user(current_user: Annotated[User, Depends(get_curr
 
 async def get_authorized_user(current_user: Annotated[User, Depends(get_current_active_user)], required_roles: list[str] = ["engineer", "admin"]):
     if current_user.role not in required_roles:
-        logger.warning(f"Permission Denied: User '{current_user.username}' with role '{current_user.role}' tried to access restricted resource. Required: {required_roles}")
         raise HTTPException(status_code=403, detail=f"Insufficient permissions. Role '{current_user.role}' required.")
     return current_user

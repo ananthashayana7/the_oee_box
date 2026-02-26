@@ -29,24 +29,21 @@ class MQTTClient:
     def on_message(self, client, userdata, msg):
         try:
             topic = msg.topic
-            payload = msg.payload.decode()
-            logger.debug(f"Received message on {topic}: {payload}")
+            # Don't decode payload immediately, it might be binary
+            payload = msg.payload
+            logger.debug(f"Received message on {topic}")
             if self.message_callback:
                 # Run the callback in the event loop
                 try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(self.message_callback(topic, payload))
+                    # Using run_coroutine_threadsafe is safer if self.loop is set
+                    if hasattr(self, 'loop'):
+                        asyncio.run_coroutine_threadsafe(self.message_callback(topic, payload), self.loop)
+                    else:
+                        # Fallback (Might fail if no loop in this thread)
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(self.message_callback(topic, payload))
                 except RuntimeError:
-                    # If no loop is running (e.g. testing), just call it if synchronous?
-                    # But message_callback is expected to be async.
-                    # This happens inside paho thread, so we need to be careful.
-                    # Actually, paho callbacks run in a separate thread.
-                    # To call async function, we need to schedule it in the main loop.
-                    # But we don't have easy access to the main loop here unless we pass it.
                     pass
-                    # For now, let's assume we can get the loop from main thread if we are careful,
-                    # or better: Use run_coroutine_threadsafe if we have the loop.
-
         except Exception as e:
             logger.error(f"Error processing message: {e}")
 
@@ -57,7 +54,7 @@ class MQTTClient:
         # Thread-safe version
         try:
             topic = msg.topic
-            payload = msg.payload.decode()
+            payload = msg.payload
             if self.message_callback and hasattr(self, 'loop'):
                 asyncio.run_coroutine_threadsafe(self.message_callback(topic, payload), self.loop)
         except Exception as e:

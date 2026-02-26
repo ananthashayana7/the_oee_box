@@ -10,7 +10,7 @@ class RLAgent:
     def __init__(self, get_oee_callback, mode="shadow"):
         self.running = False
         self.get_oee = get_oee_callback
-        self.target_topic = "factory/line1/machine_1/command"
+        self.target_topic = "factory/line1/machine1/command"
         self.mode = mode
 
     async def start(self):

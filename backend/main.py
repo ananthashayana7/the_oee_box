@@ -16,6 +16,8 @@ from backend.auth import authenticate_user, create_access_token, get_current_act
 from backend.models import Token, User
 from backend.models_config import MachineConfig
 from backend.machine_manager import machine_manager
+from backend.binary_parser import binary_parser
+from backend.governor import governor
 from backend.reporting import generate_plant_report
 from fastapi import HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -64,54 +66,92 @@ async def handle_mqtt_message(topic, payload):
         machine_id = get_machine_id_from_topic(topic)
         machine = machine_manager.get_machine(machine_id)
 
-        raw_data = json.loads(payload)
+        # Detect Binary vs JSON
+        records = []
 
-        # Sanitization (The Bouncer)
-        data, trust_scores, explanations = machine.sanitizer.process(raw_data)
-        machine.current_data = data
+        # If payload is bytes, try decode to string for JSON check
+        json_payload = None
+        if isinstance(payload, bytes):
+            try:
+                json_payload = payload.decode('utf-8')
+            except UnicodeDecodeError:
+                # Definitely binary
+                pass
+        else:
+            json_payload = payload
 
-        # Persist to DB (Sanitized)
-        timestamp = data.get("timestamp", 0)
-        for k, v in data.items():
-            if k != "timestamp":
-                await db_manager.insert_telemetry(timestamp, machine_id, k, v)
+        if json_payload:
+            try:
+                records = [json.loads(json_payload)]
+            except json.JSONDecodeError:
+                pass # Might be binary string? Unlikely if decode worked but JSON failed.
 
-        # Alerts
-        await alert_engine.process(data)
-        alerts = await db_manager.get_active_alerts()
+        if not records and isinstance(payload, bytes):
+            # Fallback to Binary Parser
+            logger.info(f"Received binary payload on {topic}, parsing...")
+            records = binary_parser.parse(payload)
+            if records:
+                # Update machine ID from binary packet if available
+                # Binary packet has 'machine_id' field (UID)
+                if records[0].get("machine_id"):
+                    machine_id = records[0]["machine_id"]
+                    machine = machine_manager.get_machine(machine_id)
 
-        # Virtual Sensors (The Adapter)
-        v_data, v_trust, v_keys = machine.virtual_factory.process(data, trust_scores)
-        machine.virtual_keys = v_keys
+        for raw_data in records:
+            # Sanitization (The Bouncer)
+            data, trust_scores, explanations = machine.sanitizer.process(raw_data)
+            machine.current_data = data
 
-        # Process Schema
-        machine.schema_engine.process(v_data)
-        machine.schema = machine.schema_engine.get_schema()
+            # Persist to DB (Sanitized)
+            timestamp = data.get("timestamp", 0)
+            for k, v in data.items():
+                if k != "timestamp":
+                    await db_manager.insert_telemetry(timestamp, machine_id, k, v)
 
-        # Calculate OEE
-        oee_result = machine.oee_calculator.update(machine.schema, v_data)
-        if oee_result:
-            machine.latest_oee = oee_result
+            # Alerts
+            await alert_engine.process(data)
 
-        # Calculate Global Trust Score
-        global_trust = sum(v_trust.values()) / len(v_trust) if v_trust else 1.0
-        machine.latest_oee["trust"] = global_trust
+            # Virtual Sensors (The Adapter)
+            v_data, v_trust, v_keys = machine.virtual_factory.process(data, trust_scores)
+            machine.virtual_keys = v_keys
 
-        # Broadcast
-        msg = {
-            "type": "update",
-            "machine_id": machine_id,
-            "data": v_data,
-            "schema": machine.schema,
-            "oee": machine.latest_oee,
-            "alerts": alerts,
-            "trust": round(global_trust, 2),
-            "virtual_keys": v_keys,
-            "explanations": explanations
-        }
-        await broadcast(msg)
-    except json.JSONDecodeError:
-        pass
+            # Process Schema
+            machine.schema_engine.process(v_data)
+            machine.schema = machine.schema_engine.get_schema()
+
+            # Calculate OEE
+            oee_result = machine.oee_calculator.update(machine.schema, v_data)
+            if oee_result:
+                machine.latest_oee = oee_result
+
+            # Calculate Global Trust Score
+            global_trust = sum(v_trust.values()) / len(v_trust) if v_trust else 1.0
+            machine.latest_oee["trust"] = global_trust
+
+        # Broadcast (Last record only to avoid flooding UI)
+        if records:
+            # Trigger Governor (Agentic Control)
+            # Fire and forget task to avoid blocking ingestion
+            asyncio.create_task(governor.evaluate_and_act(
+                machine_id,
+                records,
+                machine.latest_oee.get("oee", 0)
+            ))
+
+            alerts = await db_manager.get_active_alerts()
+            msg = {
+                "type": "update",
+                "machine_id": machine_id,
+                "data": machine.current_data,
+                "schema": machine.schema,
+                "oee": machine.latest_oee,
+                "alerts": alerts,
+                "trust": round(machine.latest_oee.get("trust", 1.0), 2),
+                "virtual_keys": machine.virtual_keys,
+                "explanations": machine.sanitizer.latest_explanations if hasattr(machine.sanitizer, 'latest_explanations') else []
+            }
+            await broadcast(msg)
+
     except Exception as e:
         logger.error(f"Error handling MQTT message: {e}")
 
@@ -232,21 +272,11 @@ async def send_command(cmd: Command, current_user: User = Depends(get_authorized
     await db_manager.log_audit("COMMAND", current_user.username, f"Sent {cmd.command}", signature=cmd.signature)
 
     logger.info(f"Authorized command: {cmd.command} to {cmd.target} by {current_user.username}")
-    
-    # If it's a RESET, clear the sanitizer windows to avoid 'spike' rejection on the next update
-    if cmd.command == "RESET":
-        # Extract machine_id from target (e.g. factory/line1/machine_1/command)
-        parts = cmd.target.split('/')
-        if len(parts) >= 3:
-            machine_id = parts[2]
-            machine = machine_manager.get_machine(machine_id)
-            machine.sanitizer.reset_windows()
-
     mqtt_service.publish(cmd.target, {"command": cmd.command})
     return {"status": "sent", "command": cmd.command}
 
 @app.post("/chat")
-async def chat_with_copilot(req: ChatRequest, current_user: User = Depends(get_authorized_user)):
+async def chat_with_copilot(req: ChatRequest):
     # Use selected machine if provided, else default to machine_1
     target = req.machine_id if req.machine_id else "machine_1"
     m = machine_manager.get_machine(target)
@@ -259,7 +289,7 @@ async def chat_with_copilot(req: ChatRequest, current_user: User = Depends(get_a
     return {"response": response}
 
 @app.get("/audit")
-async def get_audit_logs(limit: int = 20, current_user: User = Depends(get_authorized_user)):
+async def get_audit_logs(limit: int = 20):
     return await db_manager.get_audit_logs(limit)
 
 @app.get("/report/pdf")

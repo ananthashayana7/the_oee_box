@@ -19,14 +19,6 @@ services:
       - broker
     environment:
       - BROKER_HOST=broker
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - GEMINI_API_KEY=${GOOGLE_API_KEY}
-      - HF_HUB_DISABLE_SSL_VERIFY=1
-      - CURL_CA_BUNDLE=""
-      - REQUESTS_CA_BUNDLE=""
-      - PYTHONHTTPSVERIFY=0
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
@@ -41,7 +33,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: [ "python", "-u", "simulator.py", "--id", "machine_1" ]
+    command: ["python", "simulator.py"]
     depends_on:
       - broker
     environment:

@@ -1,6 +1,8 @@
 import logging
 import random
 import numpy as np
+from sentence_transformers import SentenceTransformer
+import faiss
 import os
 import google.generativeai as genai
 
@@ -8,14 +10,15 @@ logger = logging.getLogger("copilot")
 
 class ChatAgent:
     def __init__(self):
-        self.model = None
-        self.index = None
+        logger.info("Initializing Semantic Agent (RAG + Gemini)...")
+        # RAG (Local)
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.dimension = 384
+        self.index = faiss.IndexFlatL2(self.dimension)
         self.documents = []
-        self.initialized = False
-        
+
         # Gemini (Cloud)
-        self.gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
         if self.gemini_key:
             genai.configure(api_key=self.gemini_key)
             self.llm = genai.GenerativeModel('gemini-pro')
@@ -32,54 +35,21 @@ class ChatAgent:
         self.add_knowledge("Use the STOP button to halt production immediately.")
         self.add_knowledge("The Trust Score indicates signal quality. Low trust means sensor noise.")
 
-    def _ensure_initialized(self):
-        if self.initialized:
-            return
-        
-        logger.info("Lazy initializing Semantic Agent (RAG)...")
-        try:
-            from sentence_transformers import SentenceTransformer
-            import faiss
-            # RAG (Local) - Robust loading for proxy/restricted environments
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-            self.index = faiss.IndexFlatL2(self.dimension)
-            logger.info("Local RAG model loaded successfully.")
-        except BaseException as e:
-            logger.error(f"Local RAG model failed to load (offline/proxy): {type(e).__name__}: {e}")
-            self.model = None
-            self.index = None
-        
-        self.initialized = True
-
     def add_knowledge(self, text):
-        if self.model is None and not self.initialized:
-            # We don't lazy init here to avoid startup delay if possible, 
-            # just store document. RAG will try to init on first query.
-            pass
-
-        if self.model:
-            embedding = self.model.encode([text])
-            self.index.add(np.array(embedding, dtype=np.float32))
-        else:
-            logger.debug(f"Skipping embedding for: {text} (Heuristic mode)")
+        embedding = self.model.encode([text])
+        self.index.add(np.array(embedding, dtype=np.float32))
         self.documents.append(text)
 
     def process_query(self, query: str, context: dict) -> str:
         """
         Semantic RAG: Embed query, find relevant docs, augment response via Gemini.
         """
-        self._ensure_initialized()
-        
         # 1. Retrieve Knowledge
-        knowledge_snippet = ""
-        if self.model and self.index:
-            q_embed = self.model.encode([query])
-            D, I = self.index.search(np.array(q_embed, dtype=np.float32), k=2)
-            retrieved_context = [self.documents[i] for i in I[0] if i < len(self.documents)]
-            knowledge_snippet = " ".join(retrieved_context)
-        else:
-            # Simple keyword match or empty context in heuristic mode
-            knowledge_snippet = "Heuristic context only (Offline)."
+        q_embed = self.model.encode([query])
+        D, I = self.index.search(np.array(q_embed, dtype=np.float32), k=2)
+
+        retrieved_context = [self.documents[i] for i in I[0] if i < len(self.documents)]
+        knowledge_snippet = " ".join(retrieved_context)
 
         # 2. Extract Real-Time Context
         oee_data = context.get("oee", {})

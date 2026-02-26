@@ -7,26 +7,16 @@ const ControlPanel = ({ token, machineId }) => {
     try {
       const hostname = window.location.hostname || 'localhost';
       const protocol = window.location.protocol;
-      const machine = machineId || "machine_1";
-      const target = `factory/line1/${machine}/command`;
+      const target = `factory/line1/${machineId}/command`;
 
-      console.log(`Attempting to send command: ${cmd} to ${target}`);
-
-      const response = await axios.post(
+      await axios.post(
         `${protocol}//${hostname}:8000/command`,
         { cmd: { command: cmd, target: target } },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      console.log(`Response:`, response.data);
+      console.log(`Sent ${cmd} to ${target}`);
     } catch (error) {
-      console.error("Command failed details:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
-      if (error.response?.status === 401) {
-        alert("Session expired or invalid. Please Logout and Login again.");
-      }
+      console.error("Command failed", error);
     }
   };
 
